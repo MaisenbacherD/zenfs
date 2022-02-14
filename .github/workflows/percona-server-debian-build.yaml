@@ -1,0 +1,22 @@
+on:
+  create:
+  workflow_dispatch:
+name: Percona-server debian package build 
+jobs:
+  percona-server-debian-build:
+    runs-on: self-hosted
+    steps:
+      - name: Clean
+        run: rm -rf ${GITHUB_WORKSPACE}/*
+      - name: Checkout build scripts
+        run: git clone ~/harness.git
+      #Instructions for building the percona-server debian packages can be found in this blog post: https://www.percona.com/blog/2021/03/10/how-to-build-percona-server-for-mysql-from-sources/ 
+      #PERCONA_SERVER_BASE must have an origin in a Percona-Server-* tag.
+      - name: Build percona-server debian packages, install an run smoketest.
+        run: cd harness && make NO_VAGRANT=1 ZENFS_BRANCH=${GITHUB_SHA} PERCONA_SERVER_BASE=Percona-Server-8.0.26-17 percona-debian-smoke-test 
+      - name: Collect Results
+        run: cd harness && make NO_VAGRANT=1 upload 
+        if: always()
+      - name: Remove docker images
+        run: docker image prune --force
+        if: always()
