@@ -436,13 +436,13 @@ IOStatus ZenFS::SyncFileExtents(ZoneFile* zoneFile,
   return IOStatus::OK();
 }
 
-IOStatus ZenFS::SyncFileMetadata(ZoneFile* zoneFile, bool replace) {
+/* Must hold files_mtx_ */
+IOStatus ZenFS::SyncFileMetadataNoLock(ZoneFile* zoneFile, bool replace) {
   std::string fileRecord;
   std::string output;
   IOStatus s;
   ZenFSMetricsLatencyGuard guard(zbd_->GetMetrics(), ZENFS_META_SYNC_LATENCY,
                                  Env::Default());
-  std::lock_guard<std::mutex> lock(files_mtx_);
 
   if (zoneFile->IsDeleted()) {
     Info(logger_, "File %s has been deleted, skip sync file metadata!",
@@ -465,8 +465,13 @@ IOStatus ZenFS::SyncFileMetadata(ZoneFile* zoneFile, bool replace) {
   return s;
 }
 
+IOStatus ZenFS::SyncFileMetadata(ZoneFile* zoneFile, bool replace) {
+  std::lock_guard<std::mutex> lock(files_mtx_);
+  return SyncFileMetadataNoLock(zoneFile, replace);
+}
+
 /* Must hold files_mtx_ */
-std::shared_ptr<ZoneFile> ZenFS::GetFileInternal(std::string fname) {
+std::shared_ptr<ZoneFile> ZenFS::GetFileNoLock(std::string fname) {
   std::shared_ptr<ZoneFile> zoneFile(nullptr);
   if (files_.find(fname) != files_.end()) {
     zoneFile = files_[fname];
@@ -477,36 +482,51 @@ std::shared_ptr<ZoneFile> ZenFS::GetFileInternal(std::string fname) {
 std::shared_ptr<ZoneFile> ZenFS::GetFile(std::string fname) {
   std::shared_ptr<ZoneFile> zoneFile(nullptr);
   std::lock_guard<std::mutex> lock(files_mtx_);
-  zoneFile = GetFileInternal(fname);
+  zoneFile = GetFileNoLock(fname);
   return zoneFile;
 }
 
-IOStatus ZenFS::DeleteFile(std::string fname) {
+/* Must hold files_mtx_ */
+IOStatus ZenFS::DeleteZoneFileNoLock(std::string fname) {
   std::shared_ptr<ZoneFile> zoneFile(nullptr);
+  IOStatus s;
+
+  zoneFile = GetFileNoLock(fname);
+  if (zoneFile != nullptr) {
+    std::string record;
+
+    zoneFile = files_[fname];
+    files_.erase(fname);
+
+    EncodeFileDeletionTo(zoneFile, &record);
+    s = PersistRecord(record);
+    if (!s.ok()) {
+      /* Failed to persist the delete, return to a consistent state */
+      files_.insert(std::make_pair(fname.c_str(), zoneFile));
+    } else {
+      /* Mark up the file as deleted so it won't be migrated by GC */
+      zoneFile->SetDeleted();
+      zoneFile.reset();
+    }
+  } else {
+    s = IOStatus::NotFound("ZenFS::DeleteFile(): File not found");
+  }
+  return s;
+}
+
+/* Must hold files_mtx_ */
+IOStatus ZenFS::DeleteFileNoLock(std::string fname) {
+  IOStatus s = DeleteZoneFileNoLock(fname);
+  if (s.ok()) s = zbd_->ResetUnusedIOZones();
+  return s;
+}
+
+IOStatus ZenFS::DeleteFile(std::string fname) {
   IOStatus s;
 
   {
     std::lock_guard<std::mutex> lock(files_mtx_);
-    zoneFile = GetFileInternal(fname);
-    if (zoneFile != nullptr) {
-      std::string record;
-
-      zoneFile = files_[fname];
-      files_.erase(fname);
-
-      EncodeFileDeletionTo(zoneFile, &record);
-      s = PersistRecord(record);
-      if (!s.ok()) {
-        /* Failed to persist the delete, return to a consistent state */
-        files_.insert(std::make_pair(fname.c_str(), zoneFile));
-      } else {
-        /* Mark up the file as deleted so it won't be migrated by GC */
-        zoneFile->SetDeleted();
-        zoneFile.reset();
-      }
-    } else {
-      s = IOStatus::NotFound("ZenFS::DeleteFile(): File not found");
-    }
+    s = DeleteZoneFileNoLock(fname);
   }
 
   if (s.ok()) s = zbd_->ResetUnusedIOZones();
@@ -613,14 +633,16 @@ IOStatus ZenFS::ReopenWritableFile(const std::string& fname,
   return OpenWritableFile(fname, file_opts, result, dbg, true);
 }
 
-IOStatus ZenFS::GetChildren(const std::string& dir, const IOOptions& options,
-                            std::vector<std::string>* result,
-                            IODebugContext* dbg) {
+/* Must hold files_mtx_ */
+IOStatus ZenFS::GetChildrenNoLock(const std::string& dir,
+                                  const IOOptions& options,
+                                  std::vector<std::string>* result,
+                                  IODebugContext* dbg) {
   std::map<std::string, std::shared_ptr<ZoneFile>>::iterator it;
   std::vector<std::string> auxfiles;
   IOStatus s;
 
-  Debug(logger_, "GetChildren: %s \n", dir.c_str());
+  Debug(logger_, "GetChildrenNoLock: %s \n", dir.c_str());
 
   s = target()->GetChildren(ToAuxPath(dir), options, &auxfiles, dbg);
   if (!s.ok()) {
@@ -637,7 +659,6 @@ IOStatus ZenFS::GetChildren(const std::string& dir, const IOOptions& options,
     if (f != "." && f != "..") result->push_back(f);
   }
 
-  std::lock_guard<std::mutex> lock(files_mtx_);
   for (it = files_.begin(); it != files_.end(); it++) {
     std::string fname = it->first;
     if (fname.rfind(dir, 0) == 0) {
@@ -654,6 +675,13 @@ IOStatus ZenFS::GetChildren(const std::string& dir, const IOOptions& options,
   }
 
   return s;
+}
+
+IOStatus ZenFS::GetChildren(const std::string& dir, const IOOptions& options,
+                            std::vector<std::string>* result,
+                            IODebugContext* dbg) {
+  std::lock_guard<std::mutex> lock(files_mtx_);
+  return GetChildrenNoLock(dir, options, result, dbg);
 }
 
 IOStatus ZenFS::OpenWritableFile(const std::string& fname,
@@ -758,9 +786,11 @@ IOStatus ZenFS::GetFileSize(const std::string& f, const IOOptions& options,
   return s;
 }
 
-IOStatus ZenFS::RenameFile(const std::string& source_path,
-                           const std::string& dest_path,
-                           const IOOptions& options, IODebugContext* dbg) {
+/* Must hold files_mtx_ */
+IOStatus ZenFS::RenameFileNoLock(const std::string& source_path,
+                                 const std::string& dest_path,
+                                 const IOOptions& options,
+                                 IODebugContext* dbg) {
   std::shared_ptr<ZoneFile> source_file(nullptr);
   std::shared_ptr<ZoneFile> existing_dest_file(nullptr);
   IOStatus s;
@@ -768,26 +798,23 @@ IOStatus ZenFS::RenameFile(const std::string& source_path,
   Debug(logger_, "Rename file: %s to : %s\n", source_path.c_str(),
         dest_path.c_str());
 
-  source_file = GetFile(source_path);
+  source_file = GetFileNoLock(source_path);
   if (source_file != nullptr) {
-    existing_dest_file = GetFile(dest_path);
+    existing_dest_file = GetFileNoLock(dest_path);
     if (existing_dest_file != nullptr) {
-      s = DeleteFile(dest_path);
+      s = DeleteFileNoLock(dest_path);
       if (!s.ok()) {
         return s;
       }
     }
 
-    files_mtx_.lock();
     files_.erase(source_path);
     source_file->Rename(dest_path);
     files_.insert(std::make_pair(dest_path, source_file));
-    files_mtx_.unlock();
 
-    s = SyncFileMetadata(source_file);
+    s = SyncFileMetadataNoLock(source_file);
     if (!s.ok()) {
       /* Failed to persist the rename, roll back */
-      std::lock_guard<std::mutex> lock(files_mtx_);
       files_.erase(dest_path);
       source_file->Rename(source_path);
       files_.insert(std::make_pair(source_path, source_file));
@@ -798,6 +825,13 @@ IOStatus ZenFS::RenameFile(const std::string& source_path,
   }
 
   return s;
+}
+
+IOStatus ZenFS::RenameFile(const std::string& source_path,
+                           const std::string& dest_path,
+                           const IOOptions& options, IODebugContext* dbg) {
+  std::lock_guard<std::mutex> lock(files_mtx_);
+  return RenameFileNoLock(source_path, dest_path, options, dbg);
 }
 
 void ZenFS::EncodeSnapshotTo(std::string* output) {
@@ -1441,7 +1475,7 @@ IOStatus ZenFS::MigrateFileExtents(
     }
 
     // If the file doesn't exist, skip
-    if (GetFileInternal(fname) == nullptr) {
+    if (GetFileNoLock(fname) == nullptr) {
       Info(logger_, "Migrate file not exist anymore.");
       zbd_->ReleaseMigrateZone(target_zone);
       break;

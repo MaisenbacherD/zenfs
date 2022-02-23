@@ -161,7 +161,14 @@ class ZenFS : public FileSystemWrapper {
   IOStatus PersistRecord(std::string record);
   IOStatus SyncFileExtents(ZoneFile* zoneFile,
                            std::vector<ZoneExtent*> new_extents);
+  /* Must hold files_mtx_ */
+  IOStatus SyncFileMetadataNoLock(ZoneFile* zoneFile, bool replace = false);
   IOStatus SyncFileMetadata(ZoneFile* zoneFile, bool replace = false);
+  /* Must hold files_mtx_ */
+  IOStatus SyncFileMetadataNoLock(std::shared_ptr<ZoneFile> zoneFile,
+                                  bool replace = false) {
+    return SyncFileMetadataNoLock(zoneFile.get(), replace);
+  }
   IOStatus SyncFileMetadata(std::shared_ptr<ZoneFile> zoneFile,
                             bool replace = false) {
     return SyncFileMetadata(zoneFile.get(), replace);
@@ -187,8 +194,20 @@ class ZenFS : public FileSystemWrapper {
     return path;
   }
 
-  std::shared_ptr<ZoneFile> GetFileInternal(std::string fname);
+  /* Must hold files_mtx_ */
+  IOStatus GetChildrenNoLock(const std::string& dir, const IOOptions& options,
+                             std::vector<std::string>* result,
+                             IODebugContext* dbg);
+  /* Must hold files_mtx_ */
+  IOStatus RenameFileNoLock(const std::string& f, const std::string& t,
+                            const IOOptions& options, IODebugContext* dbg);
+  /* Must hold files_mtx_ */
+  std::shared_ptr<ZoneFile> GetFileNoLock(std::string fname);
   std::shared_ptr<ZoneFile> GetFile(std::string fname);
+  /* Must hold files_mtx_ */
+  IOStatus DeleteZoneFileNoLock(std::string fname);
+  /* Must hold files_mtx_ */
+  IOStatus DeleteFileNoLock(std::string fname);
   IOStatus DeleteFile(std::string fname);
   IOStatus Repair();
 
