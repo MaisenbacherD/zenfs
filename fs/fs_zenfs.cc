@@ -730,10 +730,11 @@ IOStatus ZenFS::OpenWritableFile(const std::string& fname,
   return s;
 }
 
-IOStatus ZenFS::DeleteFile(const std::string& fname, const IOOptions& options,
-                           IODebugContext* dbg) {
+IOStatus ZenFS::DeleteFileNoLock(const std::string& fname,
+                                 const IOOptions& options,
+                                 IODebugContext* dbg) {
   IOStatus s;
-  std::shared_ptr<ZoneFile> zoneFile = GetFile(fname);
+  std::shared_ptr<ZoneFile> zoneFile = GetFileNoLock(fname);
 
   Debug(logger_, "Delete file: %s \n", fname.c_str());
 
@@ -744,11 +745,17 @@ IOStatus ZenFS::DeleteFile(const std::string& fname, const IOOptions& options,
   if (zoneFile->IsOpenForWR()) {
     s = IOStatus::Busy("Cannot delete, file open for writing: ", fname.c_str());
   } else {
-    s = DeleteFile(fname);
+    s = DeleteFileNoLock(fname);
     zbd_->LogZoneStats();
   }
 
   return s;
+}
+
+IOStatus ZenFS::DeleteFile(const std::string& fname, const IOOptions& options,
+                           IODebugContext* dbg) {
+  std::lock_guard<std::mutex> lock(files_mtx_);
+  return DeleteFileNoLock(fname, options, dbg);
 }
 
 IOStatus ZenFS::GetFileModificationTime(const std::string& f,
