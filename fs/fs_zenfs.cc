@@ -684,6 +684,50 @@ IOStatus ZenFS::GetChildren(const std::string& dir, const IOOptions& options,
   return GetChildrenNoLock(dir, options, result, dbg);
 }
 
+/* Must hold files_mtx_ */
+IOStatus ZenFS::ForceDeleteDirNoLock(const std::string& d,
+                                     const IOOptions& options,
+                                     IODebugContext* dbg) {
+  std::vector<std::string> children;
+  IOStatus s;
+  std::string seperator = (d.back() != '/') ? "/" : "";
+
+  Debug(logger_, "ForceDeleteDirNoLock: %s aux: %s\n", d.c_str(),
+        ToAuxPath(d).c_str());
+
+  s = GetChildrenNoLock(d, options, &children, dbg);
+  if (!s.ok()) {
+    return s;
+  }
+
+  for (const auto& child : children) {
+    std::string file_to_delete = d + seperator + child;
+    bool is_dir;
+
+    s = IsDirectoryNoLock(file_to_delete, options, &is_dir, dbg);
+    if (!s.ok()) {
+      return s;
+    }
+
+    if (is_dir) {
+      s = ForceDeleteDirNoLock(file_to_delete, options, dbg);
+    } else {
+      s = DeleteFileNoLock(file_to_delete, options, dbg);
+    }
+    if (!s.ok()) {
+      return s;
+    }
+  }
+
+  return target()->DeleteDir(ToAuxPath(d), options, dbg);
+}
+
+IOStatus ZenFS::ForceDeleteDir(const std::string& d, const IOOptions& options,
+                               IODebugContext* dbg) {
+  std::lock_guard<std::mutex> lock(files_mtx_);
+  return ForceDeleteDirNoLock(d, options, dbg);
+}
+
 IOStatus ZenFS::OpenWritableFile(const std::string& fname,
                                  const FileOptions& file_opts,
                                  std::unique_ptr<FSWritableFile>* result,

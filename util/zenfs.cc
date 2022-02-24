@@ -493,6 +493,49 @@ int zenfs_tool_backup() {
   return SaveWriteLifeTimeHints();
 }
 
+int zenfs_tool_remove_directory() {
+  Status s;
+  IOStatus io_s;
+  IOOptions iopts;
+  IODebugContext dbg;
+
+  if (FLAGS_path.empty()) {
+    fprintf(stderr, "Error: Specify --path of the directory to be deleted.\n");
+    return 1;
+  }
+  std::unique_ptr<ZonedBlockDevice> zbd = zbd_open(false, true);
+  if (!zbd) return 1;
+
+  std::unique_ptr<ZenFS> zenFS;
+  s = zenfs_mount(zbd, &zenFS, false);
+  if (!s.ok()) {
+    fprintf(stderr, "Failed to mount filesystem, error: %s\n",
+            s.ToString().c_str());
+    return 1;
+  }
+
+  if (FLAGS_force) {
+    io_s = zenFS->ForceDeleteDir(FLAGS_path, iopts, &dbg);
+    if (!io_s.ok()) {
+      fprintf(stderr,
+              "Force delete for given directory failed with error: %s\n",
+              io_s.ToString().c_str());
+      return 1;
+    }
+    fprintf(stdout, "Force deleted directory %s\n", FLAGS_path.c_str());
+  } else {
+    io_s = zenFS->DeleteDir(FLAGS_path, iopts, &dbg);
+    if (!io_s.ok()) {
+      fprintf(stderr, "Delete for given directory failed with error: %s\n",
+              io_s.ToString().c_str());
+      return 1;
+    }
+    fprintf(stdout, "Deleted directory %s\n", FLAGS_path.c_str());
+  }
+
+  return 0;
+}
+
 int zenfs_tool_restore() {
   Status status;
   IOStatus io_status;
@@ -572,12 +615,12 @@ int zenfs_tool_fsinfo() {
 
 int main(int argc, char **argv) {
   gflags::SetUsageMessage(std::string("\nUSAGE:\n") + argv[0] +
-                  +" <command> [OPTIONS]...\nCommands: mkfs, list, ls-uuid, df, backup, restore, dump");
+                  +" <command> [OPTIONS]...\nCommands: mkfs, list, ls-uuid, df, backup, restore, dump, rmdir");
   if (argc < 2) {
     fprintf(stderr, "You need to specify a command:\n");
     fprintf(stderr,
             "\t./zenfs [list | ls-uuid | df | backup | restore | dump | "
-            "fs-info]\n");
+            "fs-info | rmdir]\n");
     return 1;
   }
 
@@ -604,6 +647,8 @@ int main(int argc, char **argv) {
     return ROCKSDB_NAMESPACE::zenfs_tool_dump();
   } else if (subcmd == "fs-info") {
     return ROCKSDB_NAMESPACE::zenfs_tool_fsinfo();
+  } else if (subcmd == "rmdir") {
+    return ROCKSDB_NAMESPACE::zenfs_tool_remove_directory();
   } else {
     fprintf(stderr, "Subcommand not recognized: %s\n", subcmd.c_str());
     return 1;

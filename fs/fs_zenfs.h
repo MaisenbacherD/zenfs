@@ -214,6 +214,10 @@ class ZenFS : public FileSystemWrapper {
   IOStatus DeleteFileNoLock(const std::string& fname, const IOOptions& options,
                             IODebugContext* dbg);
   /* Must hold files_mtx_ */
+  IOStatus ForceDeleteDirNoLock(const std::string& d, const IOOptions& options,
+                                IODebugContext* dbg);
+
+  /* Must hold files_mtx_ */
   IOStatus IsDirectoryNoLock(const std::string& path, const IOOptions& options,
                              bool* is_dir, IODebugContext* dbg) {
     if (GetFileNoLock(path) != nullptr) {
@@ -335,6 +339,9 @@ class ZenFS : public FileSystemWrapper {
 
     return target()->DeleteDir(ToAuxPath(d), options, dbg);
   }
+
+  IOStatus ForceDeleteDir(const std::string& d, const IOOptions& options,
+                          IODebugContext* dbg);
 
   // We might want to override these in the future
   IOStatus GetAbsolutePath(const std::string& db_path, const IOOptions& options,
