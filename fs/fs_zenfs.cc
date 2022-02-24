@@ -827,8 +827,49 @@ IOStatus ZenFS::RenameFileNoLock(const std::string& source_path,
       files_.insert(std::make_pair(source_path, source_file));
     }
   } else {
+    std::string source_seperator = (source_path.back() != '/') ? "/" : "";
+    std::string dest_seperator = (dest_path.back() != '/') ? "/" : "";
+    std::vector<std::string> children;
+    s = GetChildrenNoLock(source_path, options, &children, dbg);
+    if (!s.ok()) {
+      return s;
+    }
+
+    for (const auto& child : children) {
+      s = RenameFileNoLock(source_path + source_seperator + child,
+                           dest_path + dest_seperator + child, options, dbg);
+      if (!s.ok()) {
+        /* roll back renameing */
+        for (const auto& rollback_child : children) {
+          s = RenameFileNoLock(dest_path + dest_seperator + rollback_child,
+                               source_path + source_seperator + rollback_child,
+                               options, dbg);
+          if (!s.ok()) {
+            return IOStatus::Corruption(
+                "ZenFS RenameFileNoLock: Unable to roll back unsuccessful "
+                "renameing.");
+          }
+        }
+        return s;
+      }
+    }
+
     s = target()->RenameFile(ToAuxPath(source_path), ToAuxPath(dest_path),
                              options, dbg);
+
+    if (!s.ok()) {
+      /* roll back renameing */
+      for (const auto& rollback_child : children) {
+        s = RenameFileNoLock(dest_path + dest_seperator + rollback_child,
+                             source_path + source_seperator + rollback_child,
+                             options, dbg);
+        if (!s.ok()) {
+          return IOStatus::Corruption(
+              "ZenFS RenameFileNoLock: Unable to roll back unsuccessful "
+              "auxiliary path renameing.");
+        }
+      }
+    }
   }
 
   return s;
