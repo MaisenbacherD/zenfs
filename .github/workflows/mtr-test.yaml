@@ -7,7 +7,6 @@ name: MTR Tests
 jobs:
   mtr-tests:
     runs-on: nvme-zns
-    timeout-minutes: 1440
     steps:
       - name: Clean
         run: rm -rf ${GITHUB_WORKSPACE}/*
@@ -25,29 +24,28 @@ jobs:
               echo deadline > /sys/block/${!DEV}/queue/scheduler
           done
 
-      - name: Checkout percona-server
-        uses: actions/checkout@v4
-        with:
-          repository: percona/percona-server
-          ref: release-8.0.34-26
-          path: percona-server
-          submodules: true
-
-      - name: Remove default zenfs
-        run: rm -r percona-server/storage/rocksdb/rocksdb_plugins/zenfs
-
-      - name: Checkout recent zenfs
+      - name: Checkout zenfs for RocksDB
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          path: percona-server/storage/rocksdb/rocksdb_plugins/zenfs
+          path: zenfs
 
-      - name: Build percona container image
+      - name: Create build directory
+        run: |
+          mkdir -p percona-build-dir
+
+      - name: Create result directory
+        run: |
+          mkdir -p percona-results
+
+      - name: Build docker image
         run: |
           podman build --cgroup-manager cgroupfs \
-          -t percona-server \
-          -f percona-server/storage/rocksdb/rocksdb_plugins/zenfs/.github/workflows/containerfiles/Dockerfile.percona-server \
-          --build-arg LIBZBD_GIT_CHECKOUT=v2.0.4 \
+          -t percona-debian \
+          -f zenfs/.github/workflows/containerfiles/Dockerfile.percona-debian-build \
+          --build-arg PERCONA_SERVER_BASE=Percona-Server-8.0.34-26 \
+          --build-arg ZENFS_BRANCH=${GITHUB_SHA} \
+          --build-arg ZENFS_REPO=https://github.com/${GITHUB_REPOSITORY}.git \
           .
 
       - name: Run MTR RocksDB test
@@ -57,7 +55,7 @@ jobs:
           --volume ${GITHUB_WORKSPACE}/percona-server/storage/rocksdb/rocksdb_plugins/zenfs/.github/workflows/mtr:/scripts \
           --workdir /scripts \
           --env DEVICE0="$ZBD0" \
-          percona-server \
+          percona-debian \
           bash wrapper.sh bash mtr-rocksdb-test.sh
         continue-on-error: true
 
@@ -70,7 +68,7 @@ jobs:
           --workdir /scripts \
           --env DEVICE0="$ZBD0" \
           --env DEVICE1="$ZBD1" \
-          percona-server \
+          percona-debian \
           bash wrapper.sh bash mtr-rocksdb-replication-test.sh
         continue-on-error: true
 
@@ -87,7 +85,7 @@ jobs:
           --env DEVICE1="$ZBD1" \
           --env DEVICE2="$ZBD2" \
           --env DEVICE3="$ZBD3" \
-          percona-server \
+          percona-debian \
           bash wrapper.sh bash mtr-rocksdb-parallel-test.sh
         continue-on-error: true
 
@@ -104,7 +102,7 @@ jobs:
           --env DEVICE1="$ZBD1" \
           --env DEVICE2="$ZBD2" \
           --env DEVICE3="$ZBD3" \
-          percona-server \
+          percona-debian \
           bash wrapper.sh bash mtr-rocksdb-parallel-replication-test.sh
         continue-on-error: true
 
