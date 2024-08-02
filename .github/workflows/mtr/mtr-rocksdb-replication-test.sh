@@ -3,7 +3,7 @@ set -e
 
 /scripts/fs-cleanup-replication.sh
 
-cd $INSTALL_PATH/mysql-test
+cd $INSTALL_PATH
 
 SOURCE_FS_URI1=zenfs://dev:$DEVICE0 \
               REPLICA_FS_URI1=zenfs://dev:$DEVICE1 \

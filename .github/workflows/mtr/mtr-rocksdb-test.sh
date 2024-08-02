@@ -10,10 +10,10 @@ fi
 rm -fr /tmp/zenfs_aux
 zenfs mkfs --zbd=$DEVICE0 --aux-path=/tmp/zenfs_aux --force
 
-cd $INSTALL_PATH/mysql-test
+cd $INSTALL_PATH
 
 ./mtr --suite=rocksdb \
       --skip-rpl \
       --skip-test-list /scripts/expected-mtr-failures \
-      --mysqld=--rocksdb-fs-uri=zenfs://dev:$DEVICE0 \
+      --mysqld=--loose-rocksdb-fs-uri=zenfs://dev:$DEVICE0 \
       --fs-cleanup-hook="rm -rf /tmp/zenfs_aux; zenfs mkfs --zbd=$DEVICE0 --aux_path=/tmp/zenfs_aux --force"

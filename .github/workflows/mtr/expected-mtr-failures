@@ -3,8 +3,6 @@ rocksdb.drop_table2 : WL#0000 Need adapting
 rocksdb.rocksdb_fault_injection : WL#0000 Need adapting
 rocksdb.track_and_verify_wals_in_manifest : WL#0000 Need adapting
 rocksdb.type_char_index_ver_bump_verify : WL#0000 Need adapting
-rocksdb.upgrade_parts_from_prev_ver : WL#0000 Need adapting
-rocksdb.upgrade_rocksdb_from_5730 : WL#0000 Need adapting
 rocksdb.checkpoint : WL#0000 Need fixing the server
 rocksdb.bloomfilter3 : WL#0000 Sporadic failures
 rocksdb.bloomfilter_skip : WL#0000 Sporadic failures

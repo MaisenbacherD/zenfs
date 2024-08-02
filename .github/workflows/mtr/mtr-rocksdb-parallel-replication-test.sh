@@ -3,7 +3,7 @@ set -e
 
 /scripts/fs-multidev-cleanup.sh 3
 
-cd $INSTALL_PATH/mysql-test
+cd $INSTALL_PATH
 
 SOURCE_FS_URI1=zenfs://dev:$DEVICE0 SOURCE_FS_URI2=zenfs://dev:$DEVICE2 \
               REPLICA_FS_URI1=zenfs://dev:$DEVICE1 REPLICA_FS_URI2=zenfs://dev:$DEVICE3 \
