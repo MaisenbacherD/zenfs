@@ -24,7 +24,7 @@ jobs:
               echo deadline > /sys/block/${!DEV}/queue/scheduler
           done
 
-      - name: Checkout zenfs for RocksDB
+      - name: Checkout zenfs
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -52,7 +52,7 @@ jobs:
         id: mtrTest1
         run: |
           podman run --rm -i --device /dev/$ZBD0 \
-          --volume ${GITHUB_WORKSPACE}/percona-server/storage/rocksdb/rocksdb_plugins/zenfs/.github/workflows/mtr:/scripts \
+          --volume ${GITHUB_WORKSPACE}/zenfs/.github/workflows/mtr:/scripts \
           --workdir /scripts \
           --env DEVICE0="$ZBD0" \
           percona-debian \
@@ -64,7 +64,7 @@ jobs:
         run: |
           podman run --rm -i --device /dev/$ZBD0 \
           --device /dev/$ZBD1 \
-          --volume ${GITHUB_WORKSPACE}/percona-server/storage/rocksdb/rocksdb_plugins/zenfs/.github/workflows/mtr:/scripts \
+          --volume ${GITHUB_WORKSPACE}/zenfs/.github/workflows/mtr:/scripts \
           --workdir /scripts \
           --env DEVICE0="$ZBD0" \
           --env DEVICE1="$ZBD1" \
@@ -79,7 +79,7 @@ jobs:
           --device /dev/$ZBD1 \
           --device /dev/$ZBD2 \
           --device /dev/$ZBD3 \
-          --volume ${GITHUB_WORKSPACE}/percona-server/storage/rocksdb/rocksdb_plugins/zenfs/.github/workflows/mtr:/scripts \
+          --volume ${GITHUB_WORKSPACE}/zenfs/.github/workflows/mtr:/scripts \
           --workdir /scripts \
           --env DEVICE0="$ZBD0" \
           --env DEVICE1="$ZBD1" \
@@ -96,7 +96,7 @@ jobs:
           --device /dev/$ZBD1 \
           --device /dev/$ZBD2 \
           --device /dev/$ZBD3 \
-          --volume ${GITHUB_WORKSPACE}/percona-server/storage/rocksdb/rocksdb_plugins/zenfs/.github/workflows/mtr:/scripts \
+          --volume ${GITHUB_WORKSPACE}/zenfs/.github/workflows/mtr:/scripts \
           --workdir /scripts \
           --env DEVICE0="$ZBD0" \
           --env DEVICE1="$ZBD1" \
