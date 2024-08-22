@@ -7,6 +7,7 @@ name: MTR Tests
 jobs:
   mtr-tests:
     runs-on: nvme-zns
+    timeout-minutes: 1440
     steps:
       - name: Clean
         run: rm -rf ${GITHUB_WORKSPACE}/*
