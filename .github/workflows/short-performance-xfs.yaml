@@ -39,11 +39,11 @@ jobs:
 
       - name: Format conventional block device
         run: |
-          nvme format /dev/${BDEV0} -f --ses=1
+          sudo nvme format /dev/${BDEV0} -f --ses=1
 
       - name: Create xfs on BDEV
         run: |
-          mkfs.xfs -f /dev/${BDEV0}
+          sudo mkfs.xfs -f /dev/${BDEV0}
 
       - name: Create xfs mountpoint
         run: |
