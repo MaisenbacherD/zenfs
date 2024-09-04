@@ -46,7 +46,7 @@ jobs:
 
       - name: Build RocksDB docker image
         run: |
-          podman build --cgroup-manager cgroupfs \
+          podman build --jobs=$(nproc) --cgroup-manager cgroupfs \
           -t rocksdb-zenfs \
           -f rocksdb/plugin/zenfs/.github/workflows/containerfiles/Dockerfile.rocksdb-zenfs \
           --build-arg LIBZBD_GIT_CHECKOUT=v2.0.2 \
@@ -77,7 +77,7 @@ jobs:
 
       - name: Build TerarkDB docker image
         run: |
-          podman build --cgroup-manager cgroupfs \
+          podman build --jobs=$(nproc) --cgroup-manager cgroupfs \
           -t terarkdb-zenfs \
           -f terarkdb/third-party/zenfs/.github/workflows/containerfiles/Dockerfile.terarkdb-zenfs \
           --build-arg LIBZBD_GIT_CHECKOUT=v2.0.2 \

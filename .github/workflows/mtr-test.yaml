@@ -41,7 +41,7 @@ jobs:
 
       - name: Build docker image
         run: |
-          podman build --cgroup-manager cgroupfs \
+          podman build --jobs=$(nproc) --cgroup-manager cgroupfs \
           -t percona-debian \
           -f zenfs/.github/workflows/containerfiles/Dockerfile.percona-debian-build \
           --build-arg PERCONA_SERVER_BASE=Percona-Server-8.0.34-26 \
